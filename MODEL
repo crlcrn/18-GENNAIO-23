@@ -1,6 +1,7 @@
 import copy
 import random
 
+
 import networkx as nx
 
 from database.DAO import DAO
@@ -9,14 +10,10 @@ from geopy.distance import distance
 
 class Model:
     def __init__(self):
-        self._providers = DAO.getAllProviders()
         self._graph = nx.Graph()
 
-
-    def getAllProviders(self):
-        return self._providers
-
     def buildGraph(self, provider, soglia):
+
         self._nodes = DAO.getLocationsOfProvider(provider)
         self._graph.add_nodes_from(self._nodes)
 
@@ -27,51 +24,55 @@ class Model:
                     if dist < soglia:
                         self._graph.add_edge(u, v, weight=dist)
 
-        print(f"N nodes: {len(self._graph.nodes)} - N edges: {len(self._graph.edges)}")
 
-    def getGraphDetails(self):
-        return len(self._graph.nodes), len(self._graph.edges)
 
     def getNodesMostVicini(self):
 
         listTuples = []
+
         for v in self._nodes:
-            listTuples.append((v, len(list(self._graph.neighbors(v)))))
-        listTuples.sort(key=lambda x:x[1] , reverse = True)
+            num_neighbors = len(list(self._graph.neighbors(v)))
+            listTuples.append((v, num_neighbors))
 
-        result2 = [x for x in listTuples if x[1] == listTuples[0][1]]
+        listTuples.sort(key = lambda x:x[1], reverse=True)
+        max_neighbors = listTuples[0][1]
 
-        return result2
+        result = []
+        for x in listTuples:
+            if x[1] == max_neighbors:
+                result.append(x)
+
+        return result
 
     def getAllLocations(self):
         return self._graph.nodes
 
-    def getCammino(self, target, substring):
-        sources = self.getNodesMostVicini()
-        source = sources[random.randint(0, len(sources)-1)][0]
 
-        if not nx.has_path(self._graph, source, target):
-            print(f"{source} e {target} non sono connessi.")
-            return [], source
 
-        self._bestPath = []
-        self._bestLen = 0
-        parziale = [source]
 
-        self._ricorsione(parziale, target, substring)
+    def getGraphDetails(self):
+        return self._graph.number_of_nodes(), self._graph.number_of_edges()
 
-        return self._bestPath, source
+    def getPercorso(self, target, stringa):
+        self._solBest = []
+        self._lunBest = 0
 
-    def _ricorsione(self, parziale, target, substring):
+        for node in self._graph.nodes:
+            parziale = [node]
+            self._ricorsione(parziale, stringa, target)
+
+        return self._solBest
+
+    def _ricorsione(self, parziale, stringa, target):
+
         if parziale[-1] == target:
-            #devo uscire. ma prima controllo che sia una soluzione ottima
-            if len(parziale) > self._bestLen:
-                self._bestLen = len(parziale)
-                self._bestPath = copy.deepcopy(parziale)
+            if len(parziale) > self._lunBest:
+                self._lunBest = len(parziale)
+                self._solBest = copy.deepcopy(parziale)
             return
 
-        for v in self._graph.neighbors(parziale[-1]):
-            if v not in parziale and substring not in v.Location:
-                parziale.append(v)
-                self._ricorsione(parziale, target, substring)
+        for node in self._graph.neighbors(parziale[-1]):
+            if stringa not in node.Location and node not in parziale:
+                parziale.append(node)
+                self._ricorsione(parziale, stringa, target)
                 parziale.pop()
