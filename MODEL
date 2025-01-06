@@ -1,93 +1,78 @@
-import flet as ft
+import copy
+import random
+
+
+import networkx as nx
 
 from database.DAO import DAO
+from geopy.distance import distance
 
 
-class Controller:
-    def __init__(self, view, model):
-        # the view, with the graphical elements of the UI
-        self._view = view
-        # the model, which implements the logic of the program and holds the data
-        self._model = model
+class Model:
+    def __init__(self):
+        self._graph = nx.Graph()
 
-    def handleCreaGrafo(self, e):
-        provider = self._view._ddProvider.value
-        self._view._txt_result.controls.clear()
-        if provider is None:
-            self._view.create_alert('Seleziona un provider')
+    def buildGraph(self, provider, soglia):
+
+        self._nodes = DAO.getLocationsOfProvider(provider)
+        self._graph.add_nodes_from(self._nodes)
+
+        for u in self._nodes:
+            for v in self._nodes:
+                if u != v:
+                    dist = distance((u.latitude, u.longitude),(v.latitude, v.longitude)).km
+                    if dist < soglia:
+                        self._graph.add_edge(u, v, weight=dist)
+
+
+
+    def getNodesMostVicini(self):
+
+        listTuples = []
+
+        for v in self._nodes:
+            num_neighbors = len(list(self._graph.neighbors(v)))
+            listTuples.append((v, num_neighbors))
+
+        listTuples.sort(key = lambda x:x[1], reverse=True)
+        max_neighbors = listTuples[0][1]
+
+        result = []
+        for x in listTuples:
+            if x[1] == max_neighbors:
+                result.append(x)
+
+        return result
+
+    def getAllLocations(self):
+        return self._graph.nodes
+
+
+
+
+    def getGraphDetails(self):
+        return self._graph.number_of_nodes(), self._graph.number_of_edges()
+
+    def getPercorso(self, target, stringa):
+        self._solBest = []
+        self._lunBest = 0
+
+        for node in self._graph.nodes:
+            parziale = [node]
+            self._ricorsione(parziale, stringa, target)
+
+        return self._solBest
+
+    def _ricorsione(self, parziale, stringa, target):
+
+        if parziale[-1] == target:
+            if len(parziale) > self._lunBest:
+                self._lunBest = len(parziale)
+                self._solBest = copy.deepcopy(parziale)
             return
 
-        soglia = self._view._txtInDistanza.value
-        if soglia == "":
-            self._view._txt_result.controls.clear()
-            self._view._txt_result.controls.append(ft.Text('Inserisci una distanza'))
-            self._view.update_page()
-            return
-
-        try:
-            sogliaFloat = float(soglia)
-
-        except:
-            self._view._txt_result.controls.clear()
-            self._view._txt_result.controls.append(ft.Text("Attenzione, soglia inserita non numerica."))
-            self._view.update_page()
-            return
-
-        self._model.buildGraph(provider, sogliaFloat)
-
-        nNodes, nEdges = self._model.getGraphDetails()
-
-        self._view._txt_result.controls.clear()
-        self._view._txt_result.controls.append(
-            ft.Text(f"Grafo correttamente creato. Il grafo ha {nNodes} nodi e {nEdges} archi."))
-
-        self.fillDDTarget()
-
-        self._view.update_page()
-
-    def handleAnalizzaGrafo(self, e):
-
-        nNodes, nEdges = self._model.getGraphDetails()
-
-        if nNodes and nEdges == 0:
-            self._view._txt_result.clear()
-            self._view._txt_result.append(ft.Text('Grafo vuoto'))
-            self._view.update_page()
-            return
-
-        lista = self._model.getNodesMostVicini()
-
-        self._view._txt_result.controls.clear()
-        self._view._txt_result.controls.append(ft.Text("Nodi con più vicini:"))
-        for l in lista:
-            self._view._txt_result.controls.append(ft.Text(f"{l[0]}, #vicini={l[1]}"))
-
-        self._view.update_page()
-
-
-    def handleCalcolaPercorso(self, e):
-        target = self._view._ddTarget.value
-        stringa = self._view._txtInString.value
-
-        if target is None:
-            self._view.create_alert("Inserire un Target (t)")
-            return
-
-        if stringa is None:
-            self._view.create_alert("Inserire una Stringa (s)")
-            return
-
-        self._model.getPercorso(target, stringa)
-        self._view.update_page()
-
-    def fillDDProvider(self):
-        provider = DAO.getAllProviders()
-        for p in provider:
-            self._view._ddProvider.options.append(ft.dropdown.Option(f'{p}'))
-
-    def fillDDTarget(self):
-        locations = self._model.getAllLocations()
-        for t in locations:
-            self._view._ddTarget.options.append(ft.dropdown.Option(f'{t}'))
-
-        self._view.update_page()
+        for node in self._graph.neighbors(parziale[-1]):
+            if stringa not in node.Location and node not in parziale:
+                parziale.append(node)
+                self._ricorsione(parziale, stringa, target)
+                parziale.pop()
